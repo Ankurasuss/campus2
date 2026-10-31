@@ -40,7 +40,8 @@ def render_page(content):
     .poster{background:#0f172a;color:white;padding:30px;border-radius:16px;text-align:center;border:5px solid #6366f1}
     .qr-box{background:white;padding:15px;border-radius:12px;display:inline-block;margin-top:15px}
     </style></head><body>
-   <nav><b>CampusConnect AI</b><a href="/">Home</a><a href="/items">Browse Items</a><a href="/report">Report Item</a><a href="/heatmap">Analytics</a><a href="/kha-admin-786">Admin</a></nav>
+    <nav><b>CampusConnect AI</b><a href="/">Home</a><a href="/items">Browse Items</a><a href="/report">Report Item</a><a href="/heatmap">Analytics</a><a href="/kha-admin-786">Admin</a></nav>
+    <div class="container">""" + content + """</div></body></html>
     """
     return render_template_string(html)
 
