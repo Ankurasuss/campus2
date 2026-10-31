@@ -1,8 +1,8 @@
 import os, sqlite3
-from flask import Flask, g, request, redirect, render_template_string
-from werkzeug.utils import secure_filename
+from flask import Flask, g, request, redirect, render_template_string, session
 
 app = Flask(__name__)
+app.secret_key = 'campus_secret_123'  # Admin login ke liye
 DATABASE = 'campus.db'
 UPLOAD_FOLDER = 'static/uploads'
 ALLOWED_EXTENSIONS = {'png','jpg','jpeg','gif'}
@@ -34,20 +34,22 @@ def init_db():
 init_db()
 
 def render_page(content):
-    base = """
+    is_admin = session.get('is_admin', False)
+    admin_link = "<a href='/admin' style='background:green;padding:5px 10px;border-radius:5px'>Admin Panel</a>" if not is_admin else "<a href='/admin' style='background:green;padding:5px 10px;border-radius:5px'>Admin: ON (Logout)</a>"
+    base = f"""
     <!DOCTYPE html><html><head><title>CampusConnect</title>
     <style>
-    body{font-family:Arial;margin:0;background:#f4f6f8}
-    nav{background:#1e3a8a;color:white;padding:15px}
-    nav a{color:white;margin-left:15px;text-decoration:none}
-    .container{max-width:800px;margin:20px auto;background:white;padding:20px;border-radius:10px}
-    input,textarea,select{width:100%;padding:10px;margin:8px 0;box-sizing:border-box}
-    button{background:#1e3a8a;color:white;padding:10px 15px;border:none;border-radius:5px;cursor:pointer}
-    .item{border-left:4px solid #1e3a8a;padding:10px;margin:15px 0;background:#f9f9f9;border-radius:5px;overflow:hidden}
-    .item img{max-width:100%;max-height:200px;margin-top:10px;border-radius:5px;display:block}
-    .delete-btn{background:#dc2626;color:white;padding:6px 12px;text-decoration:none;border-radius:5px;float:right;font-size:13px}
+    body{{font-family:Arial;margin:0;background:#f4f6f8}}
+    nav{{background:#1e3a8a;color:white;padding:15px}}
+    nav a{{color:white;margin-left:15px;text-decoration:none}}
+    .container{{max-width:800px;margin:20px auto;background:white;padding:20px;border-radius:10px}}
+    input,textarea,select{{width:100%;padding:10px;margin:8px 0;box-sizing:border-box}}
+    button{{background:#1e3a8a;color:white;padding:10px 15px;border:none;border-radius:5px;cursor:pointer}}
+    .item{{border-left:4px solid #1e3a8a;padding:10px;margin:15px 0;background:#f9f9f9;border-radius:5px;overflow:hidden}}
+    .item img{{max-width:100%;max-height:200px;margin-top:10px;border-radius:5px;display:block}}
+    .delete-btn{{background:#dc2626;color:white;padding:6px 12px;text-decoration:none;border-radius:5px;float:right;font-size:13px}}
     </style></head><body>
-    <nav><b>CampusConnect</b><a href="/">Home</a><a href="/items">Found Items</a><a href="/report">Report Item</a></nav>
+    <nav><b>CampusConnect</b><a href="/">Home</a><a href="/items">Found Items</a><a href="/report">Report Item</a>{admin_link}</nav>
     <div class="container">__CONTENT__</div></body></html>
     """
     return render_template_string(base.replace("__CONTENT__", content))
@@ -63,6 +65,7 @@ def items():
     html = "<h2>Found Items</h2><hr>"
     for item in rows:
         img_html = f"<img src='/{item['image']}'>" if item['image'] else ""
+        # Admin ko direct delete, normal ko password page
         html += f"<div class='item'><a class='delete-btn' href='/delete/{item['id']}'>Delete</a><b>{item['type']} - {item['name']}</b><br>{item['description']}<br><small>{item['location']} | {item['contact']}</small>{img_html}</div>"
     return render_page(html)
 
@@ -90,9 +93,28 @@ def report():
     <input name="contact" placeholder="Contact">
     <label><b>Item Photo (optional):</b></label>
     <input type="file" name="photo" accept="image/*">
-    <input name="delete_code" placeholder="Set Delete Password (yaad rakhna, isi se delete hoga)" required>
+    <input name="delete_code" placeholder="Delete Password set karo" required>
+    <p style='color: #666; font-size: 13px; margin-top:-5px;'>नोट: इसी पासवर्ड से आपकी पोस्ट डिलीट होगी, इसे याद रखना।</p>
     <button>Submit</button></form>"""
     return render_page(form)
+
+@app.route('/admin', methods=['GET','POST'])
+def admin():
+    if request.method == 'POST':
+        if request.form.get('password') == 'admin123':
+            session['is_admin'] = True
+            return redirect('/items')
+        else:
+            return render_page("<h3 style='color:red'>Galat Admin Password!</h3><a href='/admin'>Try Again</a>")
+    
+    if session.get('is_admin'):
+        # Logout
+        session.pop('is_admin', None)
+        return render_page("<h3>Admin Logout ho gaya</h3><a href='/'>Home</a>")
+
+    return render_page("""<h2>Admin Login</h2><form method="post">
+    <input type="password" name="password" placeholder="Admin Password" required>
+    <button>Login as Admin</button></form>""")
 
 @app.route('/delete/<int:item_id>', methods=['GET','POST'])
 def delete_item(item_id):
@@ -100,11 +122,19 @@ def delete_item(item_id):
     item = db.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
     if not item:
         return redirect('/items')
-    
+
+    # --- ADMIN HAI TO BINA PASSWORD KE DELETE ---
+    if session.get('is_admin'):
+        if item['image'] and os.path.exists(item['image']):
+            try: os.remove(item['image'])
+            except: pass
+        db.execute("DELETE FROM items WHERE id=?", (item_id,))
+        db.commit()
+        return redirect('/items')
+
+    # --- NORMAL USER KO PASSWORD CHAHIYE ---
     if request.method == 'POST':
-        entered_code = request.form.get('delete_code','')
-        # Author ka code ya master password  - admin123
-        if entered_code == item['delete_code'] or entered_code == 'admin123':
+        if request.form.get('delete_code','') == item['delete_code']:
             if item['image'] and os.path.exists(item['image']):
                 try: os.remove(item['image'])
                 except: pass
@@ -112,19 +142,12 @@ def delete_item(item_id):
             db.commit()
             return redirect('/items')
         else:
-            return render_page(f"<h3 style='color:red'>Galat Password! Delete nahi hua.</h3><p><a href='/delete/{item_id}'>Try Again</a> | <a href='/items'>Back</a></p>")
+            return render_page(f"<h3 style='color:red'>गलत पासवर्ड! पोस्ट डिलीट नहीं हुई।</h3><a href='/delete/{item_id}'>फिर से कोशिश करो</a>")
 
-    # GET pe password form dikhao
-    form = f"""<h2>Delete Item: {item['name']}</h2>
-    <p>Ye item sirf Author delete kar sakta hai. Password dalo.</p>
-    <form method="post">
-    <input type="password" name="delete_code" placeholder="Enter Delete Password" required>
-    <button style='background:#dc2626'>Confirm Delete</button>
-    <a href='/items' style='margin-left:10px'>Cancel</a>
-    </form>
-    <br><small>Hint: Agar tu admin hai to master password <b>admin123</b> use kar sakta hai</small>
-    """
-    return render_page(form)
+    return render_page(f"""<h2>Delete: {item['name']}</h2>
+    <p>इस पोस्ट को डिलीट करने के लिए वही पासवर्ड डालो जो पोस्ट बनाते समय डाला था।</p>
+    <form method="post"><input type="password" name="delete_code" placeholder="Delete Password" required>
+    <button style='background:#dc2626'>Delete Confirm</button></form>""")
 
 @app.teardown_appcontext
 def close_connection(exception):
@@ -133,4 +156,5 @@ def close_connection(exception):
         db.close()
 
 if __name__ == '__main__':
+    from werkzeug.utils import secure_filename
     app.run()
