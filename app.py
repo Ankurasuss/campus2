@@ -1,9 +1,18 @@
-from flask import Flask, request, redirect, g
-import sqlite3
-import os
+import os, sqlite3
+from flask import Flask, g, request, redirect, render_template_string
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 DATABASE = 'campus.db'
+UPLOAD_FOLDER = 'static/uploads'
+ALLOWED_EXTENSIONS = {'png','jpg','jpeg','gif'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Folder banao
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def get_db():
     db = getattr(g, '_database', None)
@@ -15,98 +24,118 @@ def get_db():
 def init_db():
     with app.app_context():
         db = get_db()
-        db.execute('''CREATE TABLE IF NOT EXISTS items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            type TEXT, name TEXT, description TEXT, 
-            location TEXT, contact TEXT)''')
+        db.execute('''CREATE TABLE IF NOT EXISTS items
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      type TEXT, name TEXT, description TEXT,
+                      location TEXT, contact TEXT, image TEXT)''')
+        # Purane database ke liye image column add karna
+        try:
+            db.execute("ALTER TABLE items ADD COLUMN image TEXT")
+        except:
+            pass
         db.commit()
+
 init_db()
+
 BASE_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
 <title>CampusConnect</title>
 <style>
-body { font-family: Arial; margin: 0; background: #f4f6f9; }
-nav { background: #1e3a8a; color: white; padding: 15px; display: flex; justify-content: space-between; }
-nav a { color: white; margin-left: 15px; text-decoration: none; font-weight: bold; }
+body { font-family: Arial; margin: 0; background: #f4f6f8; }
+nav { background: #1e3a8a; color: white; padding: 15px; }
+nav a { color: white; margin-left: 15px; text-decoration: none; }
 .container { max-width: 800px; margin: 20px auto; background: white; padding: 20px; border-radius: 10px; }
-input, textarea, select { width: 100%; padding: 10px; margin: 8px 0; border-radius: 5px; border: 1px solid #ccc; }
-button { background: #1e3a8a; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
-.item { border: 1px solid #ddd; padding: 10px; margin: 10px 0; border-radius: 5px; }
-.lost { border-left: 5px solid red; }
-.found { border-left: 5px solid green; }
+input, textarea, select { width: 100%; padding: 10px; margin: 8px 0; box-sizing: border-box; }
+button { background: #1e3a8a; color: white; padding: 10px 15px; border: none; cursor: pointer; border-radius: 5px; }
+.item { border-left: 4px solid #1e3a8a; padding: 10px; margin: 15px 0; background: #f9f9f9; border-radius: 5px; overflow: hidden; }
+.item img { max-width: 100%%; max-height: 200px; margin-top: 10px; border-radius: 5px; }
+.delete-btn { background: #dc2626; color: white; padding: 6px 12px; text-decoration: none; border-radius: 5px; float: right; font-size: 13px; }
 </style>
 </head>
 <body>
-<nav><div><b>CampusConnect - Lost & Found</b></div><div><a href="/">Home</a><a href="/report">Report</a><a href="/items">All Items</a></div></nav>
+<nav><b>CampusConnect</b>
+<a href="/">Home</a>
+<a href="/items">Found Items</a>
+<a href="/report">Report Item</a>
+</nav>
 <div class="container">
-{content}
+%s
 </div>
 </body>
 </html>
 """
 
-@app.route("/")
+@app.route('/')
 def home():
-    content = """
-    <h2>Welcome to CampusConnect</h2>
-    <p>Smart Lost & Found Management System - B.Sc CS 5th Sem Project.</p>
-    <p><b>Tech Stack:</b> Python + Flask + SQLite + HTML/CSS</p>
-    <a href='/report'><button>Report Lost / Found Item</button></a>
-    <a href='/items'><button style='background:green'>View All Items</button></a>
-    """
-    return BASE_HTML.replace("{content}", content)
+    return render_template_string(BASE_HTML % "<h2>Welcome to CampusConnect - Lost & Found</h2><p><a href='/report'>Report Lost/Found Item</a></p>")
 
-@app.route("/report", methods=["GET", "POST"])
+@app.route('/items')
+def items():
+    db = get_db()
+    cur = db.execute("SELECT * FROM items ORDER BY id DESC")
+    items_list = cur.fetchall()
+    html = "<h2>Found Items</h2><hr>"
+    for item in items_list:
+        img_html = f"<br><img src='/{item['image']}'><br>" if item['image'] else ""
+        html += f"""<div class='item'>
+        <a class='delete-btn' href='/delete/{item['id']}' onclick="return confirm('Pakka delete karna hai?')">Delete ❌</a>
+        <b>{item['type']} - {item['name']}</b><br>
+        {item['description']}<br>
+        <small>Location: {item['location']} | Contact: {item['contact']}</small>
+        {img_html}
+        </div>"""
+    return render_template_string(BASE_HTML % html)
+
+@app.route('/report', methods=['GET','POST'])
 def report():
-    if request.method == "POST":
+    if request.method == 'POST':
+        file_path = None
+        if 'photo' in request.files:
+            file = request.files['photo']
+            if file and file.filename != '' and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                # same naam ka file na ho isliye id add
+                save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(save_path)
+                file_path = save_path
+
         db = get_db()
-        db.execute("INSERT INTO items (type, name, description, location, contact) VALUES (?,?,?,?,?)",
-                   (request.form['type'], request.form['name'], request.form['description'], request.form['location'], request.form['contact']))
+        db.execute("INSERT INTO items (type,name,description,location,contact,image) VALUES (?,?,?,?,?,?)",
+                   (request.form['type'], request.form['name'], request.form['description'], request.form['location'], request.form['contact'], file_path))
         db.commit()
-        return redirect("/items")
-    content = """
-    <h2>Report Lost / Found Item</h2>
-    <form method="post">
-        <label>Type</label><select name="type"><option value="Lost">Lost</option><option value="Found">Found</option></select>
-        <label>Item Name</label><input name="name" required placeholder="e.g. ID Card, Bottle">
-        <label>Description</label><textarea name="description" required></textarea>
-        <label>Location</label><input name="location" required placeholder="e.g. Library, Canteen">
-        <label>Contact</label><input name="contact" required placeholder="Mobile / Email">
-        <button type="submit">Save to Database</button>
+        return redirect('/items')
+    
+    form = """
+    <h2>Report Item</h2>
+    <form method="post" enctype="multipart/form-data">
+    <select name="type"><option>Lost</option><option>Found</option></select>
+    <input name="name" placeholder="Item name (e.g. Wallet, ID Card)" required>
+    <textarea name="description" placeholder="Description" required></textarea>
+    <input name="location" placeholder="Location">
+    <input name="contact" placeholder="Contact">
+    <label><b>Item ki Photo (optional):</b></label>
+    <input type="file" name="photo" accept="image/*">
+    <button>Submit</button>
     </form>
     """
-    return BASE_HTML.replace("{content}", content)
+    return render_template_string(BASE_HTML % form)
 
-@app.route("/items")
-def items():
-    q = request.args.get("q", "")
+@app.route('/delete/<int:item_id>')
+def delete_item(item_id):
     db = get_db()
-    if q:
-        cur = db.execute("SELECT * FROM items WHERE name LIKE ? OR description LIKE ? ORDER BY id DESC", (f'%{q}%', f'%{q}%'))
-    else:
-        cur = db.execute("SELECT * FROM items ORDER BY id DESC")
-    rows = cur.fetchall()
-    
-    search_box = f"""<form method="get"><input name="q" value="{q}" placeholder="Search items..."><button>Search</button></form><hr>"""
-    items_html = search_box
-    for r in rows:
-        match_html = ""
-        if r['type'] == 'Lost':
-            cur2 = db.execute("SELECT * FROM items WHERE type='Found' AND name LIKE ?", (f"%{r['name']}%",))
-            if cur2.fetchall():
-                match_html = "<b style='color:green'>Smart Match Found: Similar Found item exists!</b>"
-        items_html += f"""
-        <div class="item {'lost' if r['type']=='Lost' else 'found'}">
-            <b>{r['type']} - {r['name']}</b><br>
-            {r['description']}<br>
-            <small>Location: {r['location']} | Contact: {r['contact']}</small><br>{match_html}
-        </div>
-        """
-    if not rows:
-        items_html += "<p>No items yet.</p>"
-    return BASE_HTML.replace("{content}", items_html)
+    # photo bhi delete kar do
+    cur = db.execute("SELECT image FROM items WHERE id=?", (item_id,))
+    row = cur.fetchone()
+    if row and row['image'] and os.path.exists(row['image']):
+        try:
+            os.remove(row['image'])
+        except:
+            pass
+    db.execute("DELETE FROM items WHERE id=?", (item_id,))
+    db.commit()
+    return redirect('/items')
 
 @app.teardown_appcontext
 def close_connection(exception):
@@ -114,8 +143,5 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
-if __name__ == "__main__":
-    if not os.path.exists(DATABASE):
-        init_db()
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+if __name__ == '__main__':
+    app.run()
