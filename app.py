@@ -20,7 +20,7 @@ def init_db():
             type TEXT, name TEXT, description TEXT, 
             location TEXT, contact TEXT)''')
         db.commit()
-
+init_db()
 BASE_HTML = """
 <!DOCTYPE html>
 <html>
