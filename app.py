@@ -1,4 +1,4 @@
-import os, sqlite3, random
+import os, sqlite3, urllib.parse
 from flask import Flask, g, request, redirect, render_template_string, session
 
 app = Flask(__name__)
@@ -25,30 +25,32 @@ init_db()
 
 def render_page(content):
     base = f"""<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>CampusConnect AI</title>
-    <style>body{{font-family:Arial;margin:0;background:#f0f2f5}} nav{{background:#111827;color:white;padding:15px}}
-    nav a{{color:white;margin-left:12px;text-decoration:none;font-size:14px}} .container{{max-width:850px;margin:15px auto;background:white;padding:20px;border-radius:12px}}
-    input,textarea,select{{width:100%;padding:10px;margin:8px 0;box-sizing:border-box}} button{{background:#111827;color:white;padding:10px 15px;border:none;border-radius:6px;cursor:pointer}}
-    .item{{border-left:4px solid #7c3aed;padding:12px;margin:15px 0;background:#faf5ff;border-radius:8px}} .item img{{max-width:100%;max-height:200px;border-radius:6px;margin-top:8px}}
-    .ai-badge{{background:#7c3aed;color:white;padding:2px 8px;border-radius:10px;font-size:11px}} .btn{{padding:6px 12px;border-radius:5px;text-decoration:none;font-size:12px;margin-right:5px;display:inline-block;margin-top:5px}}
-    .poster{{background:#111827;color:white;padding:30px;border-radius:15px;text-align:center;border:5px solid #7c3aed}}
-    </style></head><body><nav><b>🤖 Campus AI</b><a href="/">Home</a><a href="/items">Found</a><a href="/report">Report</a><a href="/heatmap">Heatmap</a></nav><div class="container">{content}</div></body></html>"""
+    <style>body{{font-family:Inter,Arial;margin:0;background:#f4f5f7}} nav{{background:#0f172a;color:white;padding:15px}}
+    nav a{{color:white;margin-left:15px;text-decoration:none;font-size:14px}} .container{{max-width:850px;margin:15px auto;background:white;padding:25px;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.05)}}
+    input,textarea,select{{width:100%;padding:10px;margin:8px 0;box-sizing:border-box;border:1px solid #ddd;border-radius:6px}} button{{background:#0f172a;color:white;padding:11px 18px;border:none;border-radius:6px;cursor:pointer;font-weight:600}}
+    .item{{border-left:4px solid #6366f1;padding:14px;margin:16px 0;background:#f8f7ff;border-radius:8px}} .item img{{max-width:100%;max-height:200px;border-radius:6px;margin-top:8px}}
+    .ai-badge{{background:#6366f1;color:white;padding:3px 9px;border-radius:12px;font-size:11px}} .btn{{padding:7px 13px;border-radius:6px;text-decoration:none;font-size:12px;margin-right:6px;display:inline-block;margin-top:6px}}
+    .poster{{background:#0f172a;color:white;padding:30px;border-radius:16px;text-align:center;border:5px solid #6366f1}}
+    .qr-box{{background:white;padding:15px;border-radius:12px;display:inline-block;margin-top:15px}}
+    </style></head><body><nav><b>CampusConnect AI</b><a href="/">Home</a><a href="/items">Browse Items</a><a href="/report">Report Item</a><a href="/heatmap">Analytics</a></nav><div class="container">{content}</div></body></html>"""
     return render_template_string(base)
 
 @app.route('/')
 def home():
-    return render_page("<h2>🤖 AI Based Lost & Found</h2><p><span class='ai-badge'>AI Claim Guard</span> <span class='ai-badge'>AI Heatmap</span> <span class='ai-badge'>AI Poster</span></p><p>Fake claim AI pakad lega. No Pillow, Fast Deploy.</p><a href='/report' class='btn' style='background:#7c3aed;color:white'>Report Item</a>")
+    return render_page("<h2>AI-Powered Campus Lost & Found System</h2><p><span class='ai-badge'>AI Claim Guard</span> <span class='ai-badge'>Location Predictor</span> <span class='ai-badge'>AI Poster + QR</span></p><p>An intelligent system to prevent false claims, predict high-loss zones, and generate QR-enabled posters for quick sharing.</p><a href='/report' class='btn' style='background:#6366f1;color:white'>Report an Item</a> <a href='/items' class='btn' style='background:#0f172a;color:white'>View All Items</a>")
 
 @app.route('/items')
 def items():
     db = get_db()
     rows = db.execute("SELECT * FROM items ORDER BY id DESC").fetchall()
-    html = "<h2>All Items <span class='ai-badge'>AI Protected</span></h2>"
+    html = "<h2>Reported Items <span class='ai-badge'>AI Protected</span></h2>"
     for item in rows:
         img = f"<br><img src='/{item['image']}'>" if item['image'] else ""
-        html += f"""<div class='item'><b>{item['type']} - {item['name']}</b> <span class='ai-badge'>AI</span><br>{item['description']}<br><small>📍 {item['location']}</small>{img}<br>
-        <a class='btn' style='background:#7c3aed;color:white' href='/ai-match/{item['id']}'>🤖 AI Match</a>
-        <a class='btn' style='background:#111827;color:white' href='/claim/{item['id']}'>🛡️ Claim Test</a>
-        <a class='btn' style='background:#059669;color:white' href='/poster/{item['id']}'>📢 AI Poster</a>
+        html += f"""<div class='item'><b>{item['type']} - {item['name']}</b> <span class='ai-badge'>Verified</span><br>{item['description']}<br><small>Location: {item['location']}</small>{img}<br>
+        <a class='btn' style='background:#6366f1;color:white' href='/ai-match/{item['id']}'>AI Match</a>
+        <a class='btn' style='background:#0f172a;color:white' href='/claim/{item['id']}'>Verification Test</a>
+        <a class='btn' style='background:#10b981;color:white' href='/poster/{item['id']}'>Poster</a>
+        <a class='btn' style='background:#000;color:white' href='/qr/{item['id']}'>QR Code</a>
         <a class='btn' style='background:#ef4444;color:white' href='/delete/{item['id']}'>Delete</a></div>"""
     return render_page(html)
 
@@ -61,7 +63,16 @@ def report():
             fn = secure_filename(f.filename); path = os.path.join(UPLOAD_FOLDER, fn); f.save(path)
         db=get_db(); db.execute("INSERT INTO items (type,name,description,location,contact,image,delete_code) VALUES (?,?,?,?,?,?,?)",(request.form['type'],request.form['name'],request.form['description'],request.form['location'],request.form['contact'],path,request.form['delete_code'])); db.commit()
         return redirect('/items')
-    return render_page("""<h2>Report with AI</h2><form method="post" enctype="multipart/form-data"><select name="type"><option>Lost</option><option>Found</option></select><input name="name" placeholder="Item name" required><textarea name="description" placeholder="Full detail likho - AI isi se sawal banayega" required></textarea><input name="location" placeholder="Location - ex: Canteen"><input name="contact" placeholder="Contact"><input type="file" name="photo" accept="image/*"><input name="delete_code" placeholder="Delete Password - Yaad rakhna" required><button>Submit with AI</button></form>""")
+    return render_page("""<h2>Report Lost / Found Item</h2><form method="post" enctype="multipart/form-data">
+    <label>Item Type</label><select name="type"><option>Lost</option><option>Found</option></select>
+    <label>Language of Report</label><select name="lang"><option value="en">English</option><option value="hi">Hindi</option></select>
+    <label>Item Name</label><input name="name" placeholder="e.g. ID Card, Black Bottle" required>
+    <label>Detailed Description (AI will use this for verification)</label><textarea name="description" placeholder="Describe the item in detail - color, marks, contents, etc." required></textarea>
+    <label>Location</label><input name="location" placeholder="e.g. Library, Canteen, Block A" required>
+    <label>Contact Information</label><input name="contact" placeholder="Email or Phone" required>
+    <label>Upload Photo (Optional)</label><input type="file" name="photo" accept="image/*">
+    <label>Set Delete Password</label><input name="delete_code" placeholder="Create a password to delete later" required>
+    <button>Submit Report</button></form>""")
 
 def ai_similarity_score(a,b):
     a_words=set(a.lower().split()); b_words=set(b.lower().split())
@@ -70,74 +81,49 @@ def ai_similarity_score(a,b):
 
 @app.route('/ai-match/<int:item_id>')
 def ai_match(item_id):
-    db=get_db(); target=db.execute("SELECT * FROM items WHERE id=?",(item_id,)).fetchone(); others=db.execute("SELECT * FROM items WHERE id!=? AND type!=?",(item_id,target['type'])).fetchall()
-    html=f"<h2>🤖 AI Matching for {target['name']}</h2><p>AI ne description ka analysis kiya (TF-IDF style keyword matching)</p>"
+    db=get_db(); target=db.execute("SELECT * FROM items WHERE id=?",(item_id,)).fetchone()
+    if not target: return redirect('/items')
+    others=db.execute("SELECT * FROM items WHERE id!=? AND type!=?",(item_id,target['type'])).fetchall()
+    html=f"<h2>AI Matching for {target['name']}</h2><p>AI analyzed the description using keyword similarity analysis.</p>"
     scored=[]
     for o in others:
         s=ai_similarity_score(target['description'], o['description'])
         scored.append((o,s))
     scored=sorted(scored, key=lambda x:x[1], reverse=True)[:3]
+    found=False
     for o,s in scored:
-        if s>5: html+=f"<div class='item'>AI Confidence {int(s)}% - {o['name']}<br>{o['description']}<br>📍 {o['location']}</div>"
-    if "AI Confidence" not in html: html+="<p>AI ko abhi close match nahi mila.</p>"
-    return render_page(html)
+        if s>5: 
+            found=True
+            html+=f"<div class='item'><b>AI Confidence Score: {int(s)}%</b><br>{o['type']} - {o['name']}<br>{o['description']}<br>Location: {o['location']}<br>Contact: {o['contact']}</div>"
+    if not found: html+="<p>No close matches found at the moment. The AI system will automatically suggest a match when a similar item is reported.</p>"
+    return render_page(html + "<br><a href='/items' class='btn'>Back to Items</a>")
 
 @app.route('/claim/<int:item_id>')
 def claim(item_id):
     db=get_db(); item=db.execute("SELECT * FROM items WHERE id=?",(item_id,)).fetchone()
     desc=item['description'].lower()
     qs=[]
-    if 'black' in desc: qs.append("Item ka exact shade kya hai? Jet black ya faded?")
-    if 'bottle' in desc: qs.append("Bottle ke cap ka color kya hai?")
-    if 'wallet' in desc: qs.append("Wallet me kitne card slots hai?")
-    if 'phone' in desc or 'iphone' in desc: qs.append("Phone ka cover ka color kya tha?")
-    qs+= [f"'{item['name']}' pe koi scratch kaha hai?", f"Tumne {item['location']} me kis side rakha tha?", "Iske saath koi aur chhoti cheez thi kya?"]
+    if 'black' in desc: qs.append("What is the exact shade of the color? (Jet black / Faded)")
+    if 'bottle' in desc: qs.append("What is the color of the bottle cap?")
+    if 'wallet' in desc: qs.append("How many compartments does the wallet have?")
+    if 'phone' in desc or 'iphone' in desc: qs.append("What was the color of the phone case?")
+    if 'id' in desc or 'card' in desc: qs.append("What is the ID number or name printed on it?")
+    qs+= [f"Is there any specific scratch or mark on '{item['name']}'? Where?", f"Which side of {item['location']} was it placed?", "Was there any small item attached or kept with it?"]
     q_html="".join([f"<li>{q}</li>" for q in qs[:3]])
-    return render_page(f"<h2>🛡️ AI Claim Guard</h2><div class='item'><b>{item['name']}</b> - {item['description']}<br><br><b>🤖 AI Generated Verification Qs:</b><ol>{q_html}</ol><small>Fake claim wala fail ho jayega.</small></div>")
+    return render_page(f"<h2>AI Claim Guard - Verification Test</h2><div class='item'><b>Item:</b> {item['name']}<br><b>Description:</b> {item['description']}<br><br><b>AI Generated Security Questions:</b><ol>{q_html}</ol><small>This module generates micro-questions from the description. Only the real owner can answer them correctly, preventing false claims.</small></div><br><a href='/items' class='btn'>Back</a>")
 
-@app.route('/poster/<int:item_id>')
-def poster(item_id):
+@app.route('/item/<int:item_id>')
+def public_item(item_id):
     db=get_db(); item=db.execute("SELECT * FROM items WHERE id=?",(item_id,)).fetchone()
-    html=f"""<div class='poster'><h1 style='color:#a78bfa;font-size:40px;margin:0'>LOST ALERT!</h1><h2>{item['name'].upper()}</h2><p>{item['description']}</p><p style='background:white;color:black;padding:10px;border-radius:8px'><b>Last Seen:</b> {item['location']}<br><b>Contact:</b> {item['contact']}</p><p style='font-size:12px;color:#a78bfa'>Generated by CampusConnect AI • Scan & Share</p></div><br><p>Iska screenshot leke WhatsApp pe share kar de - ye hi AI Poster hai (Bina Pillow ke).</p><a href='/items' class='btn'>Back</a>"""
-    return render_page(html)
+    if not item: return render_page("<h2>Item not found</h2>")
+    img = f"<img src='/{item['image']}' style='max-width:100%'>" if item['image'] else ""
+    return render_page(f"<h2>{item['type']}: {item['name']}</h2><div class='item'>{img}<br><b>Description:</b> {item['description']}<br><b>Location:</b> {item['location']}<br><b>Contact:</b> {item['contact']}</div><p>Found via QR Code from CampusConnect AI</p>")
 
-@app.route('/heatmap')
-def heatmap():
-    db=get_db(); rows=db.execute("SELECT location, COUNT(*) as c FROM items GROUP BY location").fetchall()
-    total=sum([r['c'] for r in rows]) or 1
-    html="<h2>📍 AI Location Predictor</h2><p>AI ne data se seekha hai saman kaha zyada khoya hai.</p>"
-    for r in rows:
-        perc=int(r['c']/total*100); bar="█"*int(perc/4)
-        html+=f"<div class='item'><b>{r['location'] or 'Unknown'}</b> - {r['c']} items<br><span style='color:#7c3aed'>{bar}</span> {perc}%<br><small>AI Prediction: {perc}% chance yahi milega</small></div>"
-    if not rows: html+="<p>Abhi data nahi hai, jaise hi items ayenge AI heatmap banayega.</p>"
-    return render_page(html)
-
-@app.route('/delete/<int:item_id>', methods=['GET','POST'])
-def delete_item(item_id):
+@app.route('/qr/<int:item_id>')
+def qr_page(item_id):
     db=get_db(); item=db.execute("SELECT * FROM items WHERE id=?",(item_id,)).fetchone()
     if not item: return redirect('/items')
-    if session.get('is_admin'):
-        db.execute("DELETE FROM items WHERE id=?",(item_id,)); db.commit(); return redirect('/items')
-    if request.method=='POST':
-        if request.form.get('delete_code','')==item['delete_code']:
-            db.execute("DELETE FROM items WHERE id=?",(item_id,)); db.commit(); return redirect('/items')
-        else: return render_page(f"<h3 style='color:red'>Galat password!</h3><a href='/delete/{item_id}'>Try again</a>")
-    return render_page(f"<h2>Delete {item['name']}</h2><form method='post'><input type='password' name='delete_code' placeholder='Delete Password' required><button style='background:#ef4444'>Delete</button></form>")
-
-@app.route('/kha-admin-786', methods=['GET','POST'])
-def secret_admin():
-    if request.method=='POST':
-        if request.form.get('password')=='admin123':
-            session['is_admin']=True; return redirect('/items')
-        else: return render_page("<h3>Galat password</h3>")
-    if session.get('is_admin'):
-        session.pop('is_admin',None); return render_page("<h3>Admin Logout done</h3>")
-    return render_page("<h2>Admin Login</h2><form method='post'><input type='password' name='password' placeholder='Admin Password'><button>Login</button></form>")
-
-@app.teardown_appcontext
-def close_connection(e):
-    db=getattr(g,'_database',None); 
-    if db: db.close()
-
-if __name__=='__main__':
-    app.run()
+    base_url = request.host_url.rstrip('/')
+    item_url = f"{base_url}/item/{item_id}"
+    qr_data = urllib.parse.quote(item_url)
+    qr_api_url = f"https://api.qrserver.com/v1/create-qr-code
