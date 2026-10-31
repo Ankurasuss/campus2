@@ -25,13 +25,12 @@ def init_db():
         db.execute('''CREATE TABLE IF NOT EXISTS items
                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
                       type TEXT, name TEXT, description TEXT,
-                      location TEXT, contact TEXT, image TEXT)''')
-        try:
-            db.execute("ALTER TABLE items ADD COLUMN image TEXT")
-        except:
-            pass
+                      location TEXT, contact TEXT, image TEXT, delete_code TEXT)''')
+        try: db.execute("ALTER TABLE items ADD COLUMN image TEXT")
+        except: pass
+        try: db.execute("ALTER TABLE items ADD COLUMN delete_code TEXT")
+        except: pass
         db.commit()
-
 init_db()
 
 def render_page(content):
@@ -60,12 +59,11 @@ def home():
 @app.route('/items')
 def items():
     db = get_db()
-    cur = db.execute("SELECT * FROM items ORDER BY id DESC")
-    rows = cur.fetchall()
+    rows = db.execute("SELECT * FROM items ORDER BY id DESC").fetchall()
     html = "<h2>Found Items</h2><hr>"
     for item in rows:
         img_html = f"<img src='/{item['image']}'>" if item['image'] else ""
-        html += f"<div class='item'><a class='delete-btn' href='/delete/{item['id']}' onclick=\"return confirm('Delete?')\">Delete</a><b>{item['type']} - {item['name']}</b><br>{item['description']}<br><small>{item['location']} | {item['contact']}</small>{img_html}</div>"
+        html += f"<div class='item'><a class='delete-btn' href='/delete/{item['id']}'>Delete</a><b>{item['type']} - {item['name']}</b><br>{item['description']}<br><small>{item['location']} | {item['contact']}</small>{img_html}</div>"
     return render_page(html)
 
 @app.route('/report', methods=['GET','POST'])
@@ -80,8 +78,8 @@ def report():
                 f.save(save_path)
                 file_path = save_path
         db = get_db()
-        db.execute("INSERT INTO items (type,name,description,location,contact,image) VALUES (?,?,?,?,?,?)",
-                   (request.form['type'], request.form['name'], request.form['description'], request.form['location'], request.form['contact'], file_path))
+        db.execute("INSERT INTO items (type,name,description,location,contact,image,delete_code) VALUES (?,?,?,?,?,?,?)",
+                   (request.form['type'], request.form['name'], request.form['description'], request.form['location'], request.form['contact'], file_path, request.form['delete_code']))
         db.commit()
         return redirect('/items')
     form = """<h2>Report Item</h2><form method="post" enctype="multipart/form-data">
@@ -92,20 +90,41 @@ def report():
     <input name="contact" placeholder="Contact">
     <label><b>Item Photo (optional):</b></label>
     <input type="file" name="photo" accept="image/*">
+    <input name="delete_code" placeholder="Set Delete Password (yaad rakhna, isi se delete hoga)" required>
     <button>Submit</button></form>"""
     return render_page(form)
 
-@app.route('/delete/<int:item_id>')
+@app.route('/delete/<int:item_id>', methods=['GET','POST'])
 def delete_item(item_id):
     db = get_db()
-    cur = db.execute("SELECT image FROM items WHERE id=?", (item_id,))
-    row = cur.fetchone()
-    if row and row['image'] and os.path.exists(row['image']):
-        try: os.remove(row['image'])
-        except: pass
-    db.execute("DELETE FROM items WHERE id=?", (item_id,))
-    db.commit()
-    return redirect('/items')
+    item = db.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone()
+    if not item:
+        return redirect('/items')
+    
+    if request.method == 'POST':
+        entered_code = request.form.get('delete_code','')
+        # Author ka code ya master password  - admin123
+        if entered_code == item['delete_code'] or entered_code == 'admin123':
+            if item['image'] and os.path.exists(item['image']):
+                try: os.remove(item['image'])
+                except: pass
+            db.execute("DELETE FROM items WHERE id=?", (item_id,))
+            db.commit()
+            return redirect('/items')
+        else:
+            return render_page(f"<h3 style='color:red'>Galat Password! Delete nahi hua.</h3><p><a href='/delete/{item_id}'>Try Again</a> | <a href='/items'>Back</a></p>")
+
+    # GET pe password form dikhao
+    form = f"""<h2>Delete Item: {item['name']}</h2>
+    <p>Ye item sirf Author delete kar sakta hai. Password dalo.</p>
+    <form method="post">
+    <input type="password" name="delete_code" placeholder="Enter Delete Password" required>
+    <button style='background:#dc2626'>Confirm Delete</button>
+    <a href='/items' style='margin-left:10px'>Cancel</a>
+    </form>
+    <br><small>Hint: Agar tu admin hai to master password <b>admin123</b> use kar sakta hai</small>
+    """
+    return render_page(form)
 
 @app.teardown_appcontext
 def close_connection(exception):
